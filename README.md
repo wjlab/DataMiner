@@ -1,5 +1,7 @@
 ## DataMiner  Instructions
 
+English Document | [中文文档](https://github.com/wjlab/DataMiner/blob/master/README-zh-CN.md)
+
 ### 1. Function Overview
 
 - Supports sampling of all database data,and specifies the number of samples to be taken.
@@ -63,7 +65,7 @@
   DataMiner SD -T mssql -WA
   
   //Mongodb database without user password login mode using full database sampling module
-  DataMiner SD -T mongo -da 127.0.0.1:27017\
+  DataMiner SD -T mongo -da 127.0.0.1:27017
   
   //Mongodb database specified 'admin' database login mode using full database sampling module
   DataMiner SD -T mongo -da 127.0.0.1:27017?admin -du name -dp password

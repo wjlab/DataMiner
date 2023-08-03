@@ -1,5 +1,7 @@
 ## 数据库自动取样工具DataMiner使用说明
 
+中文文档 | [English Document](https://github.com/wjlab/DataMiner/blob/master/README.md)
+
 ### 1.功能概览
 
 - 支持对数据库全部数据进行取样，并支持指定条数取样
