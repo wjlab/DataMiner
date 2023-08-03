@@ -1,132 +1,151 @@
-## 数据库自动取样工具DataMiner使用说明
+## DataMiner  Instructions
 
-### 1.功能概览
+### 1. Function Overview
 
-- 支持对数据库全部数据进行取样，并支持指定条数取样
-- 支持对数据库指定数据表进行取样，并支持指定条数取样
-- 支持对数据库中的关键敏感内容进行捕获，目前支持邮箱、身份证、手机号、密码
-- 支持对数据库内容进行自定义正则表达式进行匹配
-- 支持socks5代理连接远程数据库
-- 支持对数据库中的数据量进行统计
-- 支持批量连接数据库进行信息收集
-- 数据输出为HTML和CSV
-- 目前支持Mysql、Mssql、Oracle和Mongodb数据库
+- Supports sampling of all database data,and specifies the number of samples to be taken.
+- Supports sampling of a specified database table, and specifies the number of samples to be taken.
+- Supports for  the capture of key sensitive content in the database, currently supports mailboxes, ID cards, cell phone numbers, passwords.
+- Supports for custom regular expression matching on database content.
+- Supports for socks5 proxy connection to remote databases.
+- Supports for statistics on the amount of data in the database.
+- Supports for batch connection to databases for information collection.
+- Supports for outputs data in HTML and CSV formats.
+- Currently supports Mysql, Mssql, Oracle and Mongodb databases.
 
-### 2.功能命令说明
+### 2. Function Command Description
 
-- 命令参数说明
-
-  ```
-  命令：
-  Sampledata,缩减命令: SD              //数据库全部取样功能
-  Overview,缩减命令: OV                //数据库数据量统计功能
-  SearchSensitiveData,缩减命令: SS     //数据库敏感数据捕获功能
-  SingleTable,缩减命令: ST             //数据库单表取样功能
-  参数：
-  -T  databaseType                    //数据库类型(必选参数，目前支持 mysql、mssql)
-  -da 127.0.0.1:3306                  //数据库地址(必选参数，除非使用-f参数文件输入数据)
-  -du name                            //数据库用户名(必选参数，除非使用-f参数文件输入数据)
-  -dp passwd                          //数据库密码(必选参数，除非使用-f参数文件输入数据)
-  -pa 127.0.0.1:8080                  //代理地址(可选参数)
-  -pu name                            //代理用户名(可选参数)
-  -pp passwd                          //代理密码(可选参数)
-  -n  1                               //指定取样数据条数，默认为3(可选参数)
-  -t 1                                //数据库敏感数据捕获功能使用线程数量，默认为5(可选参数)
-  -p 自定义正则表达式                  //数据库敏感数据捕获功能自定义正则匹配参数(可选参数)
-  -WA                                 //使用Windows本地认证方式登录(仅针对于mssql数据库)
-  -f data.txt                         //批量数据库信息导入文件，文本中一条数据库信息占用一行
-                                      文本格式：schema://user:password@host:port 
-                                      如：mysql://root:123321@127.0.0.1:3306
-                                          mssql://sa:123321@127.0.0.1:1433
-                                          oracle://system:123321@127.0.0.1:1521
-                                          mongo://admin:123321@127.0.0.1:27017
-                                          mongo://admin:123321@127.0.0.1:27017?admin
-                                          mongo://:@127.0.0.1:27017
-                                          上述后两条分别为mongodb数据库 指定admin数据库登录模式与无用户密码登录模式
-  ```
-
-- 全部数据库取样功能
+- Command Parameter Description
 
   ```
-  //指定mysql数据库，连接数据库，每个表中内容取样条数为2
+  Command：
+  Sampledata,Abbreviated command: SD              //Full database sampling module
+  Overview,Abbreviated command: OV                //Database data volume statistics module
+  SearchSensitiveData,Abbreviated command: SS     //Database sensitive data capture module
+  SingleTable,Abbreviated command: ST             //Database single table sampling module
+  Parameters：
+  -T  databaseType           //Database type (mandatory,currently supports mysql、mssql、oracle and mongodb)
+  -da 127.0.0.1:3306        //Database address (mandatory,unless using -f parameter to specify file as input)
+  -du name                  //Database username (mandatory，unless using -f parameter to specify file as input)
+  -dp passwd                //Database password (mandatory，unless using -f parameter to specify file as input)
+  -pa 127.0.0.1:8080        //Proxy address (optional)
+  -pu name                  //Proxy username(optional)
+  -pp passwd                //Proxy password(optional)
+  -n  1                     //Specify the number of sampling data, default is 3 (optional)
+  -t 1           //Number of threads used by the sensitive data capture module, default is 5 (optional)
+  -p Customized Regular Expression  //Sensitive data capture module custom regular matching parameters (optional)
+  -WA                               //Login using Windows local authentication (only for mssql databases)
+  -f data.txt   //Batch database information import file, with each line of the text file containing one database record. Text format：schema://user:password@host:port 
+  e.g.：mysql://root:123321@127.0.0.1:3306
+        mssql://sa:123321@127.0.0.1:1433
+        oracle://system:123321@127.0.0.1:1521
+        mongo://admin:123321@127.0.0.1:27017
+        mongo://admin:123321@127.0.0.1:27017?admin
+        mongo://:@127.0.0.1:27017
+  The last two entries above are respectively for MongoDB database, specifying the admin database login mode and the mode without user and password login.
+  ```
+
+- Sample Data Extraction Module
+
+  ```
+  //Specify the mysql database, connect to the database, and sample 2 items from each table
   DataMiner SD -T mysql -da 127.0.0.1:3306 -du name -dp passwd -n 2
-  //指定mssql数据库，使用socks代理连接数据库，每个表中内容取样条数为2
+  
+  //Specify mssql database，using socks5 proxy to connect to the database，and sample 2 items from each table
   DataMiner SD -T mssql -da 127.0.0.1:1433 -du name -dp passwd -pa 127.0.0.1:8080 -pu name -pp passwd -n 2
-  //使用文件批量导入数据库连接信息进行连接，每个表中内容取样条数为2
+  
+  //Use file to import the database connection information to connect, and sample 2 items from each table
   DataMiner SD -f data.txt  -n 2
-  //使用文件批量导入数据库连接信息并使用socks代理进行连接，每个表中内容取样条数为2
+  
+  //Use file to import the database connection information to connect using socks5 proxy, and sample 2 items from each table
   DataMiner SD -f data.txt -pa 127.0.0.1:8080 -pu name -pp passwd -n 2
-  //MSSQL数据库本地Windows认证登录使用全部数据库取样功能
+  
+  //MSSQL database local Windows authentication login mode using full database sampling module
   DataMiner SD -T mssql -WA
-  //Mongodb数据库无用户密码登录模式使用全部数据库取样功能
-  DataMiner SD -T mongo -da 127.0.0.1:27017
-  //Mongodb数据库指定admin数据库登录模式使用全部数据库取样功能
+  
+  //Mongodb database without user password login mode using full database sampling module
+  DataMiner SD -T mongo -da 127.0.0.1:27017\
+  
+  //Mongodb database specified 'admin' database login mode using full database sampling module
   DataMiner SD -T mongo -da 127.0.0.1:27017?admin -du name -dp password
   ```
 
-- 数据量统计概览功能
+- Database Overview Module
 
   ```
-  //指定oracle数据库，连接数据库，使用数据量统计命令
+  //Specify oracle database, connect to the database, and use database data volume statistics module
   DataMiner OV -T oracle -da 127.0.0.1:1521 -du name -dp passwd
-  //指定mysql数据库,使用socks代理连接数据库，使用数据量统计命令
+  
+  //Specify mysql database, using socks5 proxy to connect to the databse, and use database data volume statistics module
   DataMiner OV -T mysql -da 127.0.0.1:3306 -du name -dp passwd -pa 127.0.0.1:8080 -pu name -pp passwd
-  //使用文件批量导入数据库连接信息进行连接，使用数据量统计命令
+  
+  //Use file to import the database connection information to connect, and use database data volume statistics module
   DataMiner OV -f data.txt
-  //使用文件批量导入数据库连接信息并使用socks代理进行连接，使用数据量统计命令
+  
+  //Use file to import the database connection information to connect using socks5 proxy, and use database data volume statistics module
   DataMiner OV -f data.txt -pa 127.0.0.1:8080 -pu name -pp passwd
-  //MSSQL数据库本地Windows认证登录使用数据量统计概览功能
+  
+  //MSSQL database local Windows authentication login mode using database data volume statistics module
   DataMiner OV -T mssql -WA
-  //Mongodb数据库无用户密码登录模式使用数据量统计概览功能
+  
+  //Mongodb database without user password login mode using database data volume statistics module
   DataMiner OV -T mongo -da 127.0.0.1:27017
-  //Mongodb数据库指定admin数据库登录模式使用数据量统计概览功能
+  
+  //Mongodb database specified 'admin' database login mode using database data volume statistics module
   DataMiner OV -T mongo -da 127.0.0.1:27017?admin -du name -dp password
   ```
 
-- 关键敏感信息捕获功能
+- Key Sensitive Information Searching Module
 
   ```
-  //指定mssql数据库，连接数据库，每个表中内容取样条数为2,并指定使用6个线程
+  //Specify mssql database, connect to the database, sample 2 items from each table to find the key sensitive informaiton, and specify the use of 6 threads
   DataMiner SS -T mssql -da 127.0.0.1:1433 -du name -dp passwd -n 2 -t 6
-  //指定mysql数据库,使用socks代理连接数据库，每个表中内容取样条数为2，并指定使用6个线程
+  
+  //Specify mysql database, connect to the database using socks5 proxy, sample 2 items from each table to find the key sensitive informaiton, and specify the use of 6 threads
   DataMiner SS -T mysql -da 127.0.0.1:3306 -du name -dp passwd -pa 127.0.0.1:8080 -pu name -pp passwd -n 2 -t 6
-  //使用文件批量导入数据库连接信息进行连接，每个表中内容取样条数为2,并指定使用6个线程
+  
+  //Use file to import the database connection information to connect, sample 2 items from each table to find the key sensitive informaiton, and specify the use of 6 threads
   DataMiner SS -f data.txt  -n 2 -t 6
-  //使用文件批量导入数据库连接信息并使用socks代理进行连接，每个表中内容取样条数为2,并指定使用6个线程
+  
+  //Use file to import the database connection information to connect using socks5 proxy, sample 2 items from each table to find the key sensitive informaiton, and specify the use of 6 threads
   DataMiner SS -f data.txt -pa 127.0.0.1:8080 -pu name -pp passwd -n 2 -t 6
-  //指定mysql数据库,连接数据库，每个表中内容取样条数为2,指定使用6个线程，并使用自定义正则匹配用户名
+  
+  //Specify mysql database, connect to the database, sample 2 items from each table to find the key sensitive informaiton using customized regular expression to match user name, and specify the use of 6 threads
   DataMiner SS -T mysql -da 127.0.0.1:3306 -du name -dp passwd -n 2 -t 6 -p ^[\x{4e00}-\x{9fa5}]{2,4}$
-  //MSSQL数据库本地Windows认证登录使用关键敏感信息捕获功能
+  
+  //MSSQL database local Windows authentication login mode using key sensitive information searching module
   DataMiner SS -T mssql -WA
-  //Mongodb数据库无用户密码登录模式使用关键敏感信息捕获功能
+  
+  //Mongodb database without user password login mode using key sensitive information searching module
   DataMiner SS -T mongo -da 127.0.0.1:27017
-  //Mongodb数据库指定admin数据库登录模式使用关键敏感信息捕获功能
+  
+  //Mongodb database specified 'admin' database login mode using key sensitive information searching module
   DataMiner SS -T mongo -da 127.0.0.1:27017?admin -du name -dp password
   ```
 
 
-- 指定数据库单表取样功能
+- Specify Single Table Sampling Function
 
   ```
-  //指定mysql数据库,连接数据库，指定test数据库中users表，取样条数为2
+  //Specify mysql database, connect to the database, specify the 'users' table in the 'test' database, and sample 2 items from this table
   DataMiner ST -T mysql -da 127.0.0.1:3306 -du name -dp passwd -n 2 -dt test.users
-  //指定mysql数据库,使用socks代理连接数据库，指定test数据库中users表，取样条数为2
+  
+  //Specify mysql database, connect to the database using socks5 proxy, specify the 'users' table in the 'test' database, and sample 2 items from this table
   DataMiner ST -T mysql -da 127.0.0.1:3306 -du name -dp passwd -pa 127.0.0.1:8080 -pu name -pp passwd -n 2 -dt test.users
   ```
 
-- 取样Sample模块HTML结果输出样例
+- Sampling Module HTML Output Example
 
   ![](https://github.com/wjlab/DataMiner/blob/master/image/HtmlOutput.png)
 
-- 取样Sample模块CSV结果输出样例
+- Sampling Module CSV Output Example
 
   ![](https://github.com/wjlab/DataMiner/blob/master/image/CsvOutput.png)
 
-- 数据量统计模块HTML结果输出样例
+- Database Overview Module HTML Output Example
 
   ![](https://github.com/wjlab/DataMiner/blob/master/image/Overview.png)
 
-- 敏感数据捕获模块 CSV结果输出样例
+- Sensitive Data Capture Module  CSV Output Example
 
   ![](https://github.com/wjlab/DataMiner/blob/master/image/Secret.png)
 
