@@ -78,9 +78,9 @@
 
   ```
   //指定postgre数据库,连接数据库，对名为'test'的数据库下所有表进行取样，取样条数为2
-  DataMiner ST -T postgre -da 127.0.0.1:5432 -du name -dp passwd -dn test -n 2
+  DataMiner SSD -T postgre -da 127.0.0.1:5432 -du name -dp passwd -dn test -n 2
   //指定postgre数据库,使用socks代理连接数据库，对名为'test'的数据库下所有表进行取样，取样条数为2
-  DataMiner ST -T postgre -da 127.0.0.1:5432 -du name -dp passwd -pa 127.0.0.1:8080 -pu name -pp passwd -n 2 -dn test
+  DataMiner SSD -T postgre -da 127.0.0.1:5432 -du name -dp passwd -pa 127.0.0.1:8080 -pu name -pp passwd -n 2 -dn test
   ```
   
 - 数据量统计概览功能
