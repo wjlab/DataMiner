@@ -1,16 +1,17 @@
 package core
 
 import (
-	"database/sql"
-	"dataMiner/models"
-	"dataMiner/utils"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 	"reflect"
 	"sort"
 	"strings"
+	"database/sql"
+	"dataMiner/models"
+	"dataMiner/utils"
+	"dataMiner/dblib"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 /*
@@ -28,11 +29,11 @@ func Sampledata(db *sql.DB,tableList []string,num int,outputID utils.InfoStruct,
 	for _, tbl := range tableList {
 
 		val := strings.Split(tbl, ".")
-		columnRows:=QueryWrapped(db ,typeD,"column",val[0],val[1],0)
+		columnRows:=dblib.QueryWrapped(db ,typeD,"column",val[0],val[1],0)
 		defer columnRows.Close()
 
 		// Get data from each table
-		data:=QueryWrapped(db ,typeD,"data",val[0],val[1],num)
+		data:=dblib.QueryWrapped(db ,typeD,"data",val[0],val[1],num)
 		defer data.Close()
 		cols, err := data.Columns()
 		if err != nil {
@@ -105,14 +106,14 @@ func SampledataMongo(client *mongo.Client,collectionList []string,num int,output
 
 		val := strings.Split(clt, ".")
 		var results []bson.M
-		GetDocuments(client,val[0],val[1],num,&results)
+		dblib.GetDocuments(client,val[0],val[1],num,&results)
 
 		//put into struct for output
 		var ctmp models.SampleStruct
 		ctmp.DatabaseName = val[0]
 		ctmp.TableName = val[1]
 
-        //get the documents from each collection
+		//get the documents from each collection
 		for counter, result := range results {
 			iter := reflect.ValueOf(result).MapRange()
 			var docs []models.Document
@@ -180,4 +181,83 @@ func DealWithMongoData(prefix string, doc interface{},re *string) {
 		prefix=strings.Trim(prefix,".")
 		*re=*re+"\n"+prefix+" : "+fmt.Sprint(value)
 	}
+}
+
+/*
+  Extract data from each table in Postgre database
+  @Param  connectionString (postgre connection string)
+  @Param  tableList (all the tables in the database)
+  @Param  num (the number of rows returned from database)
+  @Param  outputID (the output file name)
+*/
+func SampledataPostgre(connectionString string,tableList []string,num int,outputID utils.InfoStruct) {
+	fmt.Println("Task is in processing......")
+	var csv []models.SampleStruct //save data for csv output
+
+	for _, tbl := range tableList {
+		parts := strings.Split(tbl, ".")
+		database := parts[0]
+		schema := parts[1]
+		table := strings.Join(parts[2:], ".")
+
+		// get column names
+		columnRows:=dblib.QueryColumnsPs(connectionString,database,schema,table)
+		defer columnRows.Close()
+
+		// Get data from each table
+		data:=dblib.QueryDataPs(connectionString,database,schema,table,num)
+		defer data.Close()
+		cols, err := data.Columns()
+		if err != nil {
+			log.Fatalf(err.Error())
+		}
+
+		// Make a slice for the values
+		values := make([]sql.RawBytes, len(cols))
+		scanArgs := make([]interface{}, len(values))
+		for i := range values {
+			scanArgs[i] = &values[i]
+		}
+
+		//put into struct
+		var ctmp models.SampleStruct
+		ctmp.DatabaseName = database
+		ctmp.TableName = schema+"."+table
+
+		//Loop through the rows and append the column names to the columnNames
+		for columnRows.Next() {
+			var columnName string
+			if err := columnRows.Scan(&columnName);
+				err != nil {log.Fatal(err) }
+			ctmp.ColumnName = append(ctmp.ColumnName, columnName)
+		}
+
+		//Loop through the rows and append the data to Rows
+		for data.Next() {
+			// read each row on the table
+			// each column value will be stored in the slice
+			err = data.Scan(scanArgs...)
+			if err != nil {
+				log.Fatal("Error scanning rows from table", err)
+			}
+
+			var value string
+			var line []string
+			for _, col := range values {
+				// Here  check if the value is nil (NULL value)
+				if col == nil {
+					value = "NULL"
+				} else {
+					value = string(col)
+				}
+				line = append(line, value)
+			}
+
+			//put it into csv
+			ctmp.Rows = append(ctmp.Rows,line)
+		}
+		csv = append(csv, ctmp)
+	}
+	utils.Savetocsv(csv, outputID,num)
+	utils.Savetohtml(csv, outputID)
 }

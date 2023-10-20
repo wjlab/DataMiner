@@ -15,7 +15,7 @@ type InputInfo struct{
 }
 
 /*
-  read all databases connection information from file and store them in slice
+  Read all databases connection information from file and store them in slice
   @Param  filename (the file where the databases connection information stored)
   @Return []InputInfo struct (the struct array passes into next function)
 */
@@ -34,7 +34,7 @@ func Batch(filename string) []InputInfo{
 }
 
 /*
-  split the information from file into formal struct
+  Split the information from file into formal struct
   @Param  str (the string of each row in the file)
   @Return InputInfo struct (the struct passes into next function)
 */
@@ -68,7 +68,7 @@ func SplitInfo(str string) InputInfo{
 }
 
 /*
-  read the batch databases information from file
+  Read the batch databases information from file
   @Param  filename (the file where the databases connection information stored)
   @Return []string (the information of each databases in the file)
   @Return error
@@ -91,6 +91,5 @@ func Readfile(fileName string) ([]string, error) {
 
 		result = append(result, line)
 	}
-
 	return result, nil
 }

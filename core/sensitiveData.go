@@ -2,8 +2,6 @@ package core
 
 import (
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 	"reflect"
 	"regexp"
@@ -12,10 +10,13 @@ import (
 	"database/sql"
 	"dataMiner/models"
 	"dataMiner/utils"
+	"dataMiner/dblib"
 	"github.com/dlclark/regexp2"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// turn tables into iterator struct
+// Turn tables into iterator struct
 type  Alltables struct {
 	tables []string
 }
@@ -47,6 +48,8 @@ var passwdTable []string   //store the table which has pass,passwd or password c
 /*
   Look for sensitive data in the database,such as email address,phone number,ID card number and password
   @Param  db (database handle)
+  @Param  client (mongo database handle)
+  @Param  connectionString (postgre database connection string)
   @Param  tableList (all the tables in the database)
   @Param  num (the number of rows returned from database)
   @Param  thread (the thread user specified)
@@ -54,7 +57,7 @@ var passwdTable []string   //store the table which has pass,passwd or password c
   @Param  pattern (the regular expresstion pattern)
   @Param  typeD (the type of database)
 */
-func LookforSensitiveData(db *sql.DB,client *mongo.Client,tableList []string,num int, thread int,outputID utils.InfoStruct,pattern string,typeD string){
+func LookforSensitiveData(db *sql.DB,client *mongo.Client,connectionString string,tableList []string,num int, thread int,outputID utils.InfoStruct,pattern string,typeD string){
 	fmt.Println("Task is in processing......")
 	var results []models.SensitiveData  //store the sensitive data which matches the pattern
 
@@ -64,6 +67,8 @@ func LookforSensitiveData(db *sql.DB,client *mongo.Client,tableList []string,num
 		SearchpasswdMs(db)
 	}else if typeD=="oracle"{
 		SearchpasswdOra(db)
+	}else if typeD=="postgre"{
+		SearchpasswdPs(connectionString,tableList)
 	}
 
 	tables := Alltables{tables: tableList}
@@ -74,6 +79,8 @@ func LookforSensitiveData(db *sql.DB,client *mongo.Client,tableList []string,num
 	for i := 0; i < thread; i++ {
 		if typeD=="mongo"{
 			go StartSearchDataMongo(it,wg,client,num,pattern,typeD,&results)
+		}else if typeD=="postgre"{
+			go StartSearchDataPs(it,wg,connectionString,num,pattern,typeD,&results)
 		}else{
 			go StartSearchData(it,wg,db,num,pattern,typeD,&results)
 		}
@@ -99,7 +106,7 @@ func StartSearchData(it *Iterator,wg *sync.WaitGroup,db *sql.DB,num int,pattern 
 			tbl:=it.Next()
 			// Get data from each table
 			val := strings.Split(tbl, ".")
-			data:=QueryWrapped(db ,typeD,"data",val[0],val[1],num)
+			data:=dblib.QueryWrapped(db ,typeD,"data",val[0],val[1],num)
 			defer data.Close()
 
 			cols, err := data.Columns()
@@ -149,7 +156,7 @@ func StartSearchData(it *Iterator,wg *sync.WaitGroup,db *sql.DB,num int,pattern 
 }
 
 /*
-  Start searching sensitive data using goroutines for Mongodb
+  Start searching sensitive data in Mongodb database using goroutines
   @Param  it (the iterator of table list)
   @Param  wg (the WaitGroup of goroutines)
   @Param  client (database handle)
@@ -166,7 +173,7 @@ func StartSearchDataMongo(it *Iterator,wg *sync.WaitGroup,client *mongo.Client,n
 			tbl := it.Next()
 			val := strings.Split(tbl, ".")
 			var resultsMongo []bson.M
-			GetDocuments(client,val[0],val[1],num,&resultsMongo)
+			dblib.GetDocuments(client,val[0],val[1],num,&resultsMongo)
 
 			//get the documents from each collection
 			for _, result := range resultsMongo {
@@ -190,7 +197,7 @@ func StartSearchDataMongo(it *Iterator,wg *sync.WaitGroup,client *mongo.Client,n
 						rtmp:=models.SensitiveData{DatabaseName: val[0],TableName: val[1],Data: keyToCheck+" : "+valueToCheck,Type: found}
 						*results=append(*results,rtmp)
 					}
-					}
+				}
 
 			}
 		}else{
@@ -199,11 +206,79 @@ func StartSearchDataMongo(it *Iterator,wg *sync.WaitGroup,client *mongo.Client,n
 	}
 }
 
+/*
+  Start searching sensitive data in Postgre database using goroutines
+  @Param  it (the iterator of table list)
+  @Param  wg (the WaitGroup of goroutines)
+  @Param  connectionString (postgre connection string)
+  @Param  num (the number of rows returned from database)
+  @Param  pattern (the regular expresstion pattern)
+  @Param  typeD (the type of database)
+  @Param  results (the result of searching)
+*/
+func StartSearchDataPs(it *Iterator,wg *sync.WaitGroup,connectionString string,num int,pattern string,typeD string,results *[]models.SensitiveData){
+	defer wg.Done()
+	for{
+		if(it.HasNext()) {
+			tbl:=it.Next()
+
+			parts := strings.Split(tbl, ".")
+			database := parts[0]
+			schema := parts[1]
+			table := strings.Join(parts[2:], ".")
+
+			// Get data from each table
+			data:=dblib.QueryDataPs(connectionString,database,schema,table,num)
+			defer data.Close()
+			cols, err := data.Columns()
+			if err != nil {
+				log.Fatalf(err.Error())
+			}
+
+			// Make a slice for the values
+			values := make([]sql.RawBytes, len(cols))
+			scanArgs := make([]interface{}, len(values))
+			for i := range values {
+				scanArgs[i] = &values[i]
+			}
+
+			for data.Next() {
+				// read the row on the table
+				// each column value will be stored in the slice
+				err = data.Scan(scanArgs...)
+				utils.CheckError("Error scanning rows from table", err)
+
+				var value string
+				for _, col := range values {
+					// Here  check if the value is nil (NULL value)
+					if col == nil {
+						continue
+					} else {
+						value = string(col)
+						var found string
+						if pattern!=""{
+							found=MatchSensitivityUserDefined(value,pattern)
+						}else{
+							found = MatchSensitivity(value,tbl,typeD)
+						}
+						if found != "" {
+							//store it in results
+							rtmp:=models.SensitiveData{DatabaseName: database,TableName: schema+"."+table,Data: value,Type: found}
+							*results=append(*results,rtmp)
+						}
+					}
+				}
+			}
+		}else{
+			break
+		}
+	}
+}
 
 /*
   Matching sensitive data entrance
-  @Param  data (the data to verify)
-  @Param  dtname (the table to verify whether in the table list whose column name contain password,passwd and pass)
+  @Param  data (the data to be verified)
+  @Param  dtname (the table to be verified, check whether it's in the table list whose column name contains password, passwd or pass)
   @Return sting type (the type of sensitive data)
 */
 func MatchSensitivity(data, dtname, typeD string) string{
@@ -225,7 +300,7 @@ func MatchSensitivity(data, dtname, typeD string) string{
 
 /*
   Matching user-defined data
-  @Param  data (the data to verify)
+  @Param  data (the data to be verified)
   @Return sting type (the type of sensitive data)
 */
 func MatchSensitivityUserDefined(data string,pattern string) string{
@@ -236,8 +311,8 @@ func MatchSensitivityUserDefined(data string,pattern string) string{
 }
 
 /*
-  Check the table whether is in the password table list or check the key whether is related to the password field
-  @Param  dtname (the table to verify whether in the table list whose column name contain password,passwd and pass, or the key in mongodb whose name contain password,passwd and pass
+  Check whether the table is in the password table list or whether the key is related to the password field
+  @Param  dtname (the table to be verified, check whether it's in the table list whose column name contains password,passwd or pass, or the key in mongodb whose name contains password,passwd or pass
   @Param  typeD (the type of database)
   @Return bool type
 */
@@ -275,7 +350,7 @@ func Output(outputID utils.InfoStruct,results []models.SensitiveData){
 
 /*
   Matching email like data
-  @Param  email (the data to verify)
+  @Param  email (the data to be verified)
   @Return bool type
 */
 func VerifyEmailFormat(email string) bool {
@@ -286,7 +361,7 @@ func VerifyEmailFormat(email string) bool {
 
 /*
   Matching phone number like data
-  @Param  mobileNum (the data to verify)
+  @Param  mobileNum (the data to be verified)
   @Return bool type
 */
 func VerifyMobileFormat(mobileNum string) bool {
@@ -297,7 +372,7 @@ func VerifyMobileFormat(mobileNum string) bool {
 
 /*
   Matching ID card number like data
-  @Param  idNum (the data to verify)
+  @Param  idNum (the data to be verified)
   @Return bool type
 */
 func VerifyIDFormat (idNum string) bool{
@@ -308,7 +383,6 @@ func VerifyIDFormat (idNum string) bool{
 
 //username verify     high false positive, not add currently
 func VerifyUsernameFormat (name string) bool{
-	//pattern:=`/^[a-zA-Z\x{4e00}-\x{9fa5}+\.?\.?a-zA-Z\x{4e00}-\x{9fa5}]{1,25}$/u`
 	pattern:=`^[\x{4e00}-\x{9fa5}]{2,4}$`
 	pattern1:=`^[a-zA-Z0-9_-]{3,15}$`
 	reg := regexp.MustCompile(pattern)
@@ -318,7 +392,7 @@ func VerifyUsernameFormat (name string) bool{
 
 /*
   Matching password like data
-  @Param  passwd (the data to verify)
+  @Param  passwd (the data to be verified)
   @Return bool type
 */
 func VerifyPasswdFormat (passwd string) bool{
@@ -336,7 +410,7 @@ func VerifyPasswdFormat (passwd string) bool{
 
 /*
   User defined regular expression func
-  @Param  data (the data to verify)
+  @Param  data (the data to be verified)
   @Param  pattern (the regular expresstion pattern)
   @Return bool type
 */
@@ -359,12 +433,12 @@ func Searchpasswd(db *sql.DB){
 	//get all the column names in the databases
 	rows, err := db.Query("SELECT table_schema,table_name,column_name FROM information_schema.columns")
 	if err != nil {
-		panic(err.Error())
+		log.Fatalf(err.Error())
 	}
 	defer rows.Close()
 	cols,err:=rows.Columns()
 	if err!=nil{
-		panic(err.Error())
+		log.Fatalf(err.Error())
 	}
 
 	// Make a slice for the values
@@ -396,7 +470,7 @@ func SearchpasswdMs(db *sql.DB){
 
 	checkList:=[]string{"passwd","password","pass"}
 
-	dbs:= QueryWrapped(db,"mssql","database","","",0)  //list all the databases
+	dbs:= dblib.QueryWrapped(db,"mssql","database","","",0)  //list all the databases
 	for dbs.Next(){
 		var dbsname string
 		err := dbs.Scan(&dbsname)
@@ -407,7 +481,7 @@ func SearchpasswdMs(db *sql.DB){
 			continue
 		}
 
-		tables:= QueryWrapped(db,"mssql","table",dbsname,"",0)
+		tables:= dblib.QueryWrapped(db,"mssql","table",dbsname,"",0)
 		var tblname string
 		for tables.Next() {
 			err = tables.Scan(&tblname)
@@ -415,7 +489,7 @@ func SearchpasswdMs(db *sql.DB){
 				log.Fatalf(err.Error())
 			}
 
-			columnRows:=QueryWrapped(db ,"mssql","column",dbsname,tblname,0)
+			columnRows:=dblib.QueryWrapped(db ,"mssql","column",dbsname,tblname,0)
 			defer columnRows.Close()
 
 			for columnRows.Next() {
@@ -464,6 +538,36 @@ func SearchpasswdOra(db *sql.DB){
 		for _,key:=range checkList {
 			if strings.Contains(strings.ToLower(string(values[2])),key){
 				passwdTable=append(passwdTable, string(values[0])+"."+string(values[1]))
+			}
+		}
+	}
+}
+
+/*
+  postgre database: search the table which has password column and store it in passwdTable slice
+  @Param  connectionString (postgre connection string)
+  @Param  tableList (all the tables in the database)
+*/
+func SearchpasswdPs(connectionString string,tableList []string){
+	checkList:=[]string{"passwd","password","pass"}
+	for _,tbl:=range tableList{
+		parts := strings.Split(tbl, ".")
+		database := parts[0]
+		schema := parts[1]
+		table := strings.Join(parts[2:], ".")
+
+		// get column names
+		columnRows:=dblib.QueryColumnsPs(connectionString,database,schema,table)
+		defer columnRows.Close()
+
+		//Loop through the rows and append the column names to the columnNames
+		for columnRows.Next() {
+			var columnName string
+			if err := columnRows.Scan(&columnName); err != nil {log.Fatal(err) }
+			for _,key:=range checkList {
+				if strings.Contains(strings.ToLower(columnName),key){
+					passwdTable=append(passwdTable, database+"."+schema+"."+table)
+				}
 			}
 		}
 	}

@@ -1,7 +1,7 @@
 package models
 
 
-//initial information
+// Initial information
 type InitData struct {
 	DatabaseType      string
     DatabaseAddress   string
@@ -11,10 +11,12 @@ type InitData struct {
     ProxyAddress      string
     ProxyUser         string
     ProxyPassword     string
+	TNSFile           string     //Use tnsnames.ora config file to connect oracle database
 	WindowsAuth       bool       //Use windows authentication to connect database
-	AuthSource        string     //Mongodb authentication need to provie database name
+	AuthSource        string     //Mongodb authentication need to provide database name
 }
-//Overview data format
+
+// Overview data format
 type OverviewData struct{
 	DatabaseName string
 	TableName    string
@@ -24,7 +26,7 @@ type Overviews struct{
 	OverviewList []OverviewData
 }
 
-//Sample data format
+// Sample data format
 type SampleStruct struct {
 	DatabaseName  string
 	TableName     string
@@ -35,7 +37,7 @@ type Samples struct{
 	SampleList []SampleStruct
 }
 
-//Sensitive data format
+// Sensitive data format
 type SensitiveData struct{
 	DatabaseName string
 	TableName    string
@@ -46,14 +48,14 @@ type Sensitive struct{
 	SensitiveList []SensitiveData
 }
 
-//document struct
+// Document struct
 type Document struct{
 	Key string
 	Value string
 }
-//dccuments array
+// Dccuments array
 type Documents []Document
-//add the sort function for later sorting the documents array
+// Add the sort function for later sorting the documents array
 func (doc Documents) Len() int { return len(doc) }
 func (doc Documents) Swap(i, j int) { doc[i], doc[j] = doc[j], doc[i] }
 func (doc Documents) Less(i, j int) bool { return doc[i].Key < doc[j].Key }

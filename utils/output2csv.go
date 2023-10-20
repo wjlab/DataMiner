@@ -1,11 +1,11 @@
 package utils
 
 import (
-	"dataMiner/models"
-	"github.com/360EntSecGroup-Skylar/excelize"
 	"log"
 	"strconv"
 	"time"
+	"dataMiner/models"
+	"github.com/360EntSecGroup-Skylar/excelize"
 )
 
 /*

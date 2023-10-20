@@ -1,12 +1,12 @@
 package utils
 
 import (
-	"dataMiner/models"
-	"html/template"
 	"log"
 	"os"
 	"strings"
 	"time"
+	"html/template"
+	"dataMiner/models"
 )
 
 /*
@@ -15,7 +15,6 @@ import (
   @Param  outputID (the output file name)
 */
 func SavetohtmlO(csv []models.OverviewData,outputID InfoStruct) {
-
 	csvs := models.Overviews{OverviewList: csv}
 
 	// Define the HTML template
@@ -71,7 +70,6 @@ func SavetohtmlO(csv []models.OverviewData,outputID InfoStruct) {
   @Param  csv (the result of SampleData function)
   @Param  outputID (the output file name)
 */
-
 func Savetohtml(csv []models.SampleStruct,outputID InfoStruct) {
 	// Create a template for the HTML output
 	tmpl, err := template.New("table").Funcs(template.FuncMap{

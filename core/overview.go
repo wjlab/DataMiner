@@ -3,14 +3,15 @@ package core
 import (
 	"context"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 	"strconv"
+	"strings"
 	"database/sql"
 	"dataMiner/models"
 	"dataMiner/utils"
-	"strings"
+	"dataMiner/dblib"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 /*
@@ -24,7 +25,7 @@ func Overview(db *sql.DB,outputID utils.InfoStruct,typeD string) {
 	var csv []models.OverviewData
 
 	// get all the databases
-	dbs:= QueryWrapped(db,typeD,"database","","",0)
+	dbs:= dblib.QueryWrapped(db,typeD,"database","","",0)
 	for dbs.Next() {
 		var dbsname string
 		err := dbs.Scan(&dbsname)
@@ -32,10 +33,10 @@ func Overview(db *sql.DB,outputID utils.InfoStruct,typeD string) {
 			log.Fatalf(err.Error())
 		}
 		if typeD == "mysql" {
-		   if dbsname == "information_schema" || dbsname == "mysql" || dbsname == "performance_schema" || dbsname == "sys" {
-			continue
-		   }
-	    }else if typeD=="mssql"{
+			if dbsname == "information_schema" || dbsname == "mysql" || dbsname == "performance_schema" || dbsname == "sys" {
+				continue
+			}
+		}else if typeD=="mssql"{
 			if dbsname=="tempdb"||dbsname=="master"||dbsname=="model"||dbsname=="msdb"||dbsname=="ReportServer"||dbsname=="ReportServerTempDB"{
 				continue
 			}
@@ -44,8 +45,8 @@ func Overview(db *sql.DB,outputID utils.InfoStruct,typeD string) {
 				continue
 			}
 		}
-	    // get the tables
-		tables:= QueryWrapped(db,typeD,"table",dbsname,"",0)
+		// get the tables
+		tables:= dblib.QueryWrapped(db,typeD,"table",dbsname,"",0)
 		var tblname string
 		for tables.Next() {
 			err = tables.Scan(&tblname)
@@ -53,7 +54,7 @@ func Overview(db *sql.DB,outputID utils.InfoStruct,typeD string) {
 				log.Fatalf(err.Error())
 			}
 			var rowCount int
-			QueryCount(db,typeD,dbsname,tblname,&rowCount)
+			dblib.QueryCount(db,typeD,dbsname,tblname,&rowCount)
 			ctmp:=models.OverviewData{DatabaseName: dbsname,TableName: tblname,RowCount: strconv.Itoa(rowCount)}
 			csv=append(csv,ctmp)
 		}
@@ -63,7 +64,7 @@ func Overview(db *sql.DB,outputID utils.InfoStruct,typeD string) {
 }
 
 /*
-  Count the amount of data in the mongo database
+  Count the amount of data in mongo database
   @Param  client (database handle)
   @Param  outputID (the output file name)
 */
@@ -102,6 +103,37 @@ func OverviewMongo(client *mongo.Client,outputID utils.InfoStruct){
 			csv=append(csv,ctmp)
 
 		}
+	}
+	utils.SavetocsvO(csv,outputID)
+	utils.SavetohtmlO(csv,outputID)
+}
+
+/*
+  Count the amount of data in Postgre database
+  @Param  connectionString (postgre connection string)
+  @Param  tableList (all the tables in the database)
+  @Param  outputID (the output file name)
+*/
+func OverviewPostgre(connectionString string,tableList []string,outputID utils.InfoStruct) {
+	fmt.Println("Task is in processing......")
+	var csv []models.OverviewData //save data for csv output
+
+	for _, tbl := range tableList {
+		parts := strings.Split(tbl, ".")
+		database := parts[0]
+		schema := parts[1]
+		table := strings.Join(parts[2:], ".")
+
+		query := fmt.Sprintf("SELECT COUNT(*) FROM \"%s\".\"%s\"",schema, table)
+		var rowCount int
+		db:=dblib.PostgreDBConnect(connectionString,database)
+		err := db.QueryRow(query).Scan(&rowCount)
+		if err != nil {
+			log.Fatal(err)
+		}
+		db.Close()
+		ctmp:=models.OverviewData{DatabaseName: database,TableName: schema+"."+table,RowCount: strconv.Itoa(rowCount)}
+		csv=append(csv,ctmp)
 	}
 	utils.SavetocsvO(csv,outputID)
 	utils.SavetohtmlO(csv,outputID)

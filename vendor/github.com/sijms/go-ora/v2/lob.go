@@ -3,8 +3,6 @@ package go_ora
 import (
 	"bytes"
 	"errors"
-	"github.com/sijms/go-ora/v2/converters"
-	"go/types"
 )
 
 type Clob struct {
@@ -14,10 +12,6 @@ type Clob struct {
 }
 
 type NClob Clob
-
-type lobInterface interface {
-	getLocator() []byte
-}
 
 type Blob struct {
 	locator []byte
@@ -51,10 +45,10 @@ func (lob *Lob) initialize() {
 	lob.bNullO2U = false
 	lob.sendSize = false
 	lob.size = 0
-	//lob.charsetID = 0
+	lob.charsetID = 0
 	lob.sourceOffset = 0
 	lob.destOffset = 0
-	//lob.scn = nil
+	lob.scn = nil
 }
 
 // variableWidthChar if lob has variable width char or not
@@ -136,25 +130,22 @@ func (lob *Lob) putData(data []byte) error {
 	return lob.read()
 }
 
-func (lob *Lob) putString(data string) error {
-	conn := lob.connection
-	conn.connOption.Tracer.Printf("Put Lob String: %d character", int64(len([]rune(data))))
+func (lob *Lob) putString(data string, charset int) error {
+	lob.connection.connOption.Tracer.Printf("Put Lob String: %d character", int64(len([]rune(data))))
 	lob.initialize()
-	var strConv converters.IStringConverter
+	lob.charsetID = charset
+	tempCharset := lob.connection.strConv.GetLangID()
 	if lob.variableWidthChar() {
-		if conn.dBVersion.Number < 10200 && lob.littleEndianClob() {
-			strConv, _ = conn.getStrConv(2002)
+		if lob.connection.dBVersion.Number < 10200 && lob.littleEndianClob() {
+			lob.connection.strConv.SetLangID(2002)
 		} else {
-			strConv, _ = conn.getStrConv(2000)
+			lob.connection.strConv.SetLangID(2000)
 		}
 	} else {
-		var err error
-		strConv, err = conn.getStrConv(lob.charsetID)
-		if err != nil {
-			return err
-		}
+		lob.connection.strConv.SetLangID(lob.charsetID)
 	}
-	lobData := strConv.Encode(data)
+	lobData := lob.connection.strConv.Encode(data)
+	lob.connection.strConv.SetLangID(tempCharset)
 	// lob.size = int64(len([]rune(data)))
 	// lob.sendSize = true
 	lob.sourceOffset = 1
@@ -169,7 +160,7 @@ func (lob *Lob) putString(data string) error {
 	return lob.read()
 }
 
-// isTemporary: return true if the lob is temporary
+//isTemporary: return true if the lob is temporary
 func (lob *Lob) isTemporary() bool {
 	if len(lob.sourceLocator) > 7 {
 		if lob.sourceLocator[7]&1 == 1 || lob.sourceLocator[4]&0x40 == 0x40 {
@@ -604,12 +595,10 @@ func (lob *Lob) readData() error {
 	////}
 	//return nil
 }
-
 func (lob *Lob) GetLobId(locator []byte) []byte {
 	//BitConverter.ToString(lobLocator, 10, 10);
 	return locator[10 : 10+10]
 }
-
 func (lob *Lob) append(dest []byte) error {
 	lob.initialize()
 	lob.destLocator = dest
@@ -641,115 +630,3 @@ func (lob *Lob) copy(srcLocator, dstLocator []byte, srcOffset, dstOffset, length
 	}
 	return lob.read()
 }
-
-func (val *Clob) Scan(value interface{}) error {
-	val.Valid = true
-	if value == nil {
-		val.Valid = false
-		val.String = ""
-		return nil
-	}
-	switch temp := value.(type) {
-	case Clob:
-		*val = temp
-	case *Clob:
-		*val = *temp
-	case NClob:
-		*val = Clob(temp)
-	case *NClob:
-		*val = Clob(*temp)
-	case string:
-		val.String = temp
-	case types.Nil:
-		val.String = ""
-		val.Valid = false
-	default:
-		return errors.New("go-ora: Clob column type require Clob or string values")
-	}
-	return nil
-}
-
-func (val *Blob) Scan(value interface{}) error {
-	val.Valid = true
-	if value == nil {
-		val.Valid = false
-		val.Data = nil
-		return nil
-	}
-	switch temp := value.(type) {
-	case Blob:
-		*val = temp
-	case *Blob:
-		*val = *temp
-	case []byte:
-		val.Data = temp
-	case types.Nil:
-		val.Data = nil
-		val.Valid = false
-	default:
-		return errors.New("go-ora: Blob column type require Blob or []byte values")
-	}
-	return nil
-}
-
-func (val *NClob) Scan(value interface{}) error {
-	val.Valid = true
-	if value == nil {
-		val.Valid = false
-		val.String = ""
-		return nil
-	}
-	switch temp := value.(type) {
-	case Clob:
-		*val = NClob(temp)
-	case *Clob:
-		*val = NClob(*temp)
-	case NClob:
-		*val = temp
-	case *NClob:
-		*val = *temp
-	case string:
-		val.String = temp
-	case types.Nil:
-		val.String = ""
-		val.Valid = false
-	default:
-		return errors.New("go-ora: Clob column type require Clob or string values")
-	}
-	return nil
-}
-
-func (val Blob) getLocator() []byte {
-	return val.locator
-}
-func (val Clob) getLocator() []byte {
-	return val.locator
-}
-func (val NClob) getLocator() []byte {
-	return val.locator
-}
-
-//func (val Clob) Value() (driver.Value, error) {
-//	if val.Valid {
-//		return val.String, nil
-//	} else {
-//		return nil, nil
-//	}
-//}
-
-//
-//func (val *NClob) Value() (driver.Value, error) {
-//	if val.Valid {
-//		return val.String, nil
-//	} else {
-//		return nil, nil
-//	}
-//}
-//
-//func (val *Blob) Value() (driver.Value, error) {
-//	if val.Valid {
-//		return val.Data, nil
-//	} else {
-//		return nil, nil
-//	}
-//}

@@ -1,23 +1,20 @@
-package  core
+package  dblib
 
 import (
 	"context"
-	"database/sql"
-	"dataMiner/models"
-	"dataMiner/utils"
 	"fmt"
-	_ "github.com/denisenkom/go-mssqldb"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/gookit/color"
-	_ "github.com/sijms/go-ora/v2"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"database/sql"
+	"dataMiner/models"
+	"dataMiner/utils"
+	"github.com/gookit/color"
+	_ "github.com/denisenkom/go-mssqldb"
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/sijms/go-ora/v2"
 )
 
 /*
@@ -25,7 +22,7 @@ import (
   @Param  info (the information user inputs)
   @Return sql.DB (database handle)
 */
-func MysqlDBinit(info models.InitData) (*sql.DB){
+func MysqlDBinit(info *models.InitData) (*sql.DB){
 	var db *sql.DB
 	if info.DatabaseAddress==""{
 		log.Fatalf("Enter the database address,please!")
@@ -37,8 +34,8 @@ func MysqlDBinit(info models.InitData) (*sql.DB){
 			db, err = sql.Open("mysql", info.DatabaseUser+":"+info.DatabasePassword+"@tcp("+info.DatabaseAddress+")/?parseTime=True&loc=Local&charset=utf8")
 			if err!=nil{
 				log.Fatalf("err: %v\n", err)
-			   }
-			}else{
+			}
+		}else{
 			log.Fatalf("err: %v\n", err)
 		}
 	}
@@ -56,7 +53,7 @@ func MysqlDBinit(info models.InitData) (*sql.DB){
   @Param  info (the information user inputs)
   @Return sql.DB (database handle)
 */
-func MssqlDBinit(info models.InitData) (*sql.DB) {
+func MssqlDBinit(info *models.InitData) (*sql.DB) {
 	var db *sql.DB
 	if info.WindowsAuth{
 		port:="1433"
@@ -80,6 +77,7 @@ func MssqlDBinit(info models.InitData) (*sql.DB) {
 		}
 
 		dbF, err := sql.Open("mssql", fmt.Sprintf("sqlserver://%v:%v@%v/?connection&encrypt=disable&charset=utf8mb4", info.DatabaseUser,url.PathEscape(info.DatabasePassword),info.DatabaseAddress))
+
 		if err != nil{
 			log.Fatalf("err: %v\n", err)
 		}
@@ -98,21 +96,28 @@ func MssqlDBinit(info models.InitData) (*sql.DB) {
   @Param  info (the information user inputs)
   @Return sql.DB (database handle)
 */
-func OracleDBinit(info models.InitData) (*sql.DB) {
+func OracleDBinit(info *models.InitData) (*sql.DB) {
 	var db *sql.DB
-	if info.DatabaseAddress==""{
-		log.Fatalf("Enter the database address,please!")
+	var err error
+	if info.DatabaseAddress==""&&info.TNSFile==""{
+		log.Fatalf("Enter the database address or tnsnames.ora config file path, please!")
 	}
 
+	var connString  string
 	index := strings.Index(info.DatabaseAddress, "/")
-	if index!=-1{
-		info.DatabaseInstance=info.DatabaseAddress[index:]
-	}else{
-		info.DatabaseInstance="/ORCL"
+	if index != -1 {
+		connString=fmt.Sprintf("oracle://"+info.DatabaseUser+":"+info.DatabasePassword+"@"+info.DatabaseAddress+info.DatabaseInstance)
+		} else {
+			if info.DatabaseInstance!=""{
+				connString=fmt.Sprintf("oracle://"+info.DatabaseUser+":"+info.DatabasePassword+"@"+info.DatabaseAddress+"/"+info.DatabaseInstance)
+			}else{
+				info.DatabaseInstance = "/ORCL"
+				connString=fmt.Sprintf("oracle://"+info.DatabaseUser+":"+info.DatabasePassword+"@"+info.DatabaseAddress+info.DatabaseInstance)
+			}
 	}
 
-	db, err := sql.Open("oracle", "oracle://"+info.DatabaseUser+":"+info.DatabasePassword+"@"+info.DatabaseAddress+info.DatabaseInstance)
-	if err != nil{
+	db, err = sql.Open("oracle", connString)
+	if err != nil {
 		log.Fatalf("err: %v\n", err)
 	}
 
@@ -120,10 +125,29 @@ func OracleDBinit(info models.InitData) (*sql.DB) {
 	if err != nil {
 		log.Fatalf("err: %v\n", err)
 	}
-	color.Infoln(info.DatabaseUser+":"+info.DatabasePassword+"@"+info.DatabaseAddress," connection inited successfully.")
+	connectInfo:=strings.Split(connString,"://")[1]
+	color.Infoln(connectInfo," connection inited successfully.")
+
 	return db
 }
 
+// check the connectivity with oracle database setting 5 seconds timeout
+func CheckConnectivity(connStr string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	db, err := sql.Open("oracle", connStr)
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+
+	err = db.PingContext(ctx)
+	if err != nil {
+		return false
+	}
+	return true
+}
 
 /*
   mysql: count all tables and add them into list
@@ -313,104 +337,4 @@ func QueryFromDatabases(db *sql.DB,queryStr string) *sql.Rows{
 		log.Fatal(err.Error())
 	}
 	return  rows
-}
-
-/*
-  Mongo database initialization, and return database handle (support MongoDB 3.6 and higher)
-  @Param  info (the information user inputs)
-  @Return *mongo.Client (database handle)
-*/
-func MongodbInit(info models.InitData) *mongo.Client {
-
-	// Set timeout to 10 seconds
-	timeout := time.Second * 10
-
-	// Create a context with the timeout
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// Set up a MongoDB client
-	clientOptions := options.Client()
-	if info.DatabaseUser!=""{
-		credential := options.Credential{
-			Username: info.DatabaseUser,
-			Password: info.DatabasePassword,
-			AuthSource: info.AuthSource,
-		}
-		clientOptions.SetAuth(credential)
-	}
-	clientOptions.ApplyURI("mongodb://"+info.DatabaseAddress)
-
-	client, err := mongo.Connect(ctx, clientOptions)
-	if err != nil {
-			log.Fatal(err)
-	}
-
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	color.Infoln(info.DatabaseUser+":"+info.DatabasePassword+"@"+info.DatabaseAddress," connection inited successfully.")
-	return client
-}
-
-/*
-  Mongo: count all collections and add them into list
-  @Param  client (database handle)
-  @Return []string (all the tables in the database)
-*/
-func CountAllCollections(client *mongo.Client)([]string){
-	var collectionList []string
-	// Get the list of database names
-	dbNames, err := client.ListDatabaseNames(context.Background(), bson.M{})
-	if err != nil {
-		if strings.Contains(err.Error(),"unable to authenticate using mechanism"){
-			log.Fatal("This Mongodb needs to authenticate database name, please provide database name after database address, like: 127.0.0.1:27017?databaseName")
-		}else{
-			log.Fatal(err)
-		}
-	}
-
-	for _, dbName := range dbNames {
-		if dbName=="config"||dbName=="admin"||dbName=="local"{
-			continue
-		}
-		// Get the list of collection names in each database
-		collNames, err := client.Database(dbName).ListCollectionNames(context.Background(), bson.M{})
-		if err != nil {
-			log.Fatal(err)
-		}
-		for _, collName := range collNames {
-			collectionList=append(collectionList,dbName+"."+collName)
-		}
-	}
-	return collectionList
-}
-
-/*
-  Mongo: get all documents from the specified collection and put them into results
-  @Param  client (database handle)
-  @Param  database (the specified database name)
-  @Param  collection (the specified collection name)
-  @Param  num (the number of data returned from database)
-  @Param  results (save the data returned from database)
-*/
-func GetDocuments(client *mongo.Client,database,collectionName string,num int ,results *[]bson.M){
-	// Select a collection
-	collection := client.Database(database).Collection(collectionName)
-	findOptions := options.Find()
-	findOptions.SetSort(bson.D{{"_id", 1}})
-	//don't show _id object
-	findOptions.SetProjection(bson.M{"_id": 0})
-	findOptions.SetLimit(int64(num))
-	// Get a cursor over all documents in the collection
-	cursor, err := collection.Find(context.Background(), bson.D{},findOptions)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer cursor.Close(context.Background())
-	if err = cursor.All(context.Background(), results); err != nil {
-		log.Fatal(err)
-	}
 }
